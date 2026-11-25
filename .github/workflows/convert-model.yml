@@ -29,10 +29,20 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "tensorflow==2.13.1" "jax==0.4.18" "jaxlib==0.4.18" "tensorflowjs==4.12.0"
 
-      - name: Convert Keras model to TensorFlow.js
+      - name: Export native Keras model to HDF5
+        run: |
+          python - <<'PY'
+          import tensorflow as tf
+          model = tf.keras.models.load_model("source_model/brain_tumor_cnn.keras", compile=False)
+          model.save("source_model/brain_tumor_cnn.h5", include_optimizer=False)
+          print("Input:", model.input_shape)
+          print("Output:", model.output_shape)
+          PY
+
+      - name: Convert HDF5 model to TensorFlow.js
         run: |
           mkdir -p docs/model
-          tensorflowjs_converter --input_format=keras source_model/brain_tumor_cnn.keras docs/model
+          tensorflowjs_converter --input_format=keras source_model/brain_tumor_cnn.h5 docs/model
 
       - name: Commit converted model
         run: |
