@@ -1,0 +1,47 @@
+name: Convert Keras model for GitHub Pages
+
+on:
+  push:
+    branches:
+      - github-pages-browser
+    paths:
+      - "source_model/brain_tumor_cnn.keras"
+      - ".github/workflows/convert-model.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install conversion dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "tensorflow==2.13.1" "tensorflowjs==4.12.0"
+
+      - name: Convert Keras model to TensorFlow.js
+        run: |
+          mkdir -p docs/model
+          tensorflowjs_converter --input_format=keras source_model/brain_tumor_cnn.keras docs/model
+
+      - name: Commit converted model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/model
+          if git diff --cached --quiet; then
+            echo "No converted model changes to commit."
+          else
+            git commit -m "Add converted TensorFlow.js model"
+            git push
+          fi
