@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain MRI Tumor Classification</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<style>
+:root{color-scheme:light;--ink:#172b25;--muted:#687a73;--green:#176b50;--line:#dce7e1;--paper:#f5f8f6}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:850px;margin:48px auto;padding:0 20px}.panel{background:white;border:1px solid var(--line);border-radius:20px;padding:30px;box-shadow:0 12px 40px #193b2a0b}
+h1{margin:0 0 8px;font-size:clamp(25px,4vw,36px)}.sub{margin:0 0 26px;color:var(--muted)}
+.upload{display:block;border:2px dashed #a9c7b8;border-radius:16px;padding:28px;text-align:center;background:#fbfdfb;cursor:pointer}
+.upload input{display:block;margin:14px auto 0;max-width:100%}button{border:0;border-radius:10px;background:var(--green);color:white;padding:12px 20px;font-weight:650;cursor:pointer;margin-top:18px}button:disabled{opacity:.5;cursor:not-allowed}
+#preview{display:none;max-width:100%;max-height:340px;margin:22px auto 0;border-radius:12px}#status{margin-top:18px;padding:12px 14px;border-radius:10px;background:#f1f5f2;color:#53665d;overflow-wrap:anywhere}
+#result{display:none;margin-top:20px;border-top:1px solid var(--line);padding-top:18px}.prob{display:flex;justify-content:space-between;gap:12px;margin:8px 0}.bar{height:8px;background:#e8efeb;border-radius:9px;overflow:hidden}.bar span{display:block;height:100%;background:#2c8b68}
+small{color:var(--muted)}footer{margin:18px 4px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<main><section class="panel">
+<h1>Brain MRI Tumor Classification</h1>
+<p class="sub">Educational image-classification demo using a TensorFlow.js model in your browser.</p>
+<label class="upload">Choose an MRI image (PNG, JPG, JPEG, BMP)
+<input id="file" type="file" accept="image/png,image/jpeg,image/bmp">
+</label>
+<img id="preview" alt="Selected MRI preview">
+<div><button id="predict" disabled>Classify image</button></div>
+<div id="status" role="status">Checking whether the converted model is available…</div>
+<section id="result"><h2 id="answer"></h2><p id="confidence"></p><div id="probs"></div></section>
+</section><footer>This educational tool is not a medical diagnosis. Model files must be added to the <code>model/</code> folder after conversion.</footer></main>
+<script>
+const CLASS_NAMES = ["Glioma tumor","Meningioma tumor","No tumor","Pituitary tumor"];
+const MODEL_URL = "./model/model.json";
+let model = null, selectedImage = null;
+const fileInput = document.getElementById("file");
+const preview = document.getElementById("preview");
+const predictButton = document.getElementById("predict");
+const statusBox = document.getElementById("status");
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  if (!/^image\/(png|jpeg|bmp)$/.test(file.type)) {
+    statusBox.textContent = "Please choose a PNG, JPG, or BMP image.";
+    predictButton.disabled = true; return;
+  }
+  selectedImage = file;
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = "block";
+  predictButton.disabled = !model;
+  document.getElementById("result").style.display = "none";
+  statusBox.textContent = model ? "Image ready. Click Classify image." : "Image selected, but the model files are not installed yet.";
+});
+async function loadModel() {
+  try {
+    model = await tf.loadLayersModel(MODEL_URL);
+    statusBox.textContent = "Model loaded. Choose an image to begin.";
+    predictButton.disabled = !selectedImage;
+  } catch (err) {
+    statusBox.textContent = "The website files are in place, but the converted model is not uploaded yet (expected: docs/model/model.json).";
+    console.error(err);
+  }
+}
+predictButton.addEventListener("click", async () => {
+  if (!model || !selectedImage) return;
+  predictButton.disabled = true;
+  statusBox.textContent = "Analyzing image in your browser…";
+  try {
+    const bitmap = await createImageBitmap(selectedImage);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0);
+    const pixels = tf.browser.fromPixels(canvas, 3);
+    // Keras load_img defaults to nearest-neighbor resizing; preserve RGB and /255 scaling.
+    const resized = tf.image.resizeNearestNeighbor(pixels, [224, 224], false)
+      .toFloat().div(255).expandDims(0);
+    const output = model.predict(resized);
+    const values = Array.from(await output.data());
+    const best = values.indexOf(Math.max(...values));
+    document.getElementById("answer").textContent = CLASS_NAMES[best] || "Unknown";
+    document.getElementById("confidence").textContent = "Model score: " + (values[best] * 100).toFixed(2) + "%";
+    document.getElementById("probs").innerHTML = values.map((v,i) =>
+      '<div class="prob"><span>'+CLASS_NAMES[i]+'</span><strong>'+(v*100).toFixed(2)+'%</strong></div><div class="bar"><span style="width:'+Math.max(0,Math.min(100,v*100))+'%"></span></div>'
+    ).join("");
+    document.getElementById("result").style.display = "block";
+    statusBox.textContent = "Done. Inference ran locally in this browser.";
+    pixels.dispose(); resized.dispose(); output.dispose();
+  } catch (err) {
+    console.error(err);
+    statusBox.textContent = "Could not run inference: " + (err.message || err);
+  } finally { predictButton.disabled = !model; }
+});
+loadModel();
+</script>
+</body></html>
